@@ -20,17 +20,12 @@ object Pattern extends Enumeration {
 }
 
 
-/** Runs a set of patterns against an SRAM to verify its behavior.
- *
- * Once the BIST is complete, `done` should be set high and remain high. If the BIST
- * failed, `fail` should be asserted on the same cycle and remain high.
- */
 class SramBist(numWords: Int, dataWidth: Int, patterns: Seq[Pattern.Type])
    extends Module {
  val io = IO(new Bundle {
    // SRAM interface
    val we = Output(Bool())
-   val addr = Output(UInt(log2Ceil(numWords).W))
+   val addr = Output(UInt(log2Ceil(numWords + 1).W))
    val din = Output(UInt(dataWidth.W))
    val dout = Input(UInt(dataWidth.W))
 
@@ -47,13 +42,23 @@ class SramBist(numWords: Int, dataWidth: Int, patterns: Seq[Pattern.Type])
  val doneReg = RegInit(false.B)
  val checkReg = RegInit(false.B)
  val weReg = RegInit(false.B)
- val addrReg = RegInit(0.U(log2Ceil(numWords).W))
+ val addrReg = RegInit(0.U(log2Ceil(numWords+1).W))
  val dinReg = RegInit(0.U(dataWidth.W))
  io.we := weReg
  io.addr := addrReg
  io.din := dinReg
  io.done := doneReg
  io.fail := failReg
+  when (reset.asBool) {
+  count        := 0.U
+  patternCount := 0.U
+  doneReg      := false.B  
+  failReg      := false.B
+  checkReg     := false.B
+  weReg        := false.B
+  addrReg      := 0.U
+  dinReg       := 0.U
+} .otherwise {
  patterns.zipWithIndex.foreach { // A Scala `foreach` loop to iterate over the Scala sequence `patterns`.
  case (pattern, idx) => {
    when(patternCount === idx.U) { // Chisel `when` statement to match against the hardware register `ctr`.
@@ -62,7 +67,7 @@ class SramBist(numWords: Int, dataWidth: Int, patterns: Seq[Pattern.Type])
        case Pattern.W0 => {
          weReg := true.B
          checkReg := false.B
-         when(count === numWords.U){
+         when(count >= numWords.U){
            weReg := false.B
          }
          addrReg := count
@@ -71,7 +76,7 @@ class SramBist(numWords: Int, dataWidth: Int, patterns: Seq[Pattern.Type])
        case Pattern.W1 => {
          weReg := true.B
          checkReg := false.B
-         when(count === numWords.U){
+         when(count >= numWords.U ){
            weReg := false.B
          }
          addrReg := count
@@ -108,12 +113,15 @@ class SramBist(numWords: Int, dataWidth: Int, patterns: Seq[Pattern.Type])
    }
    }
  }
- };
+ };}
 when(count === numWords.U + 1.U) {
  count := 0.U
  patternCount := patternCount + 1.U
+ 
 }
  when (patternCount === patterns.length.U ){
    doneReg := true.B
+   failReg := false.B
  }
+
 }
